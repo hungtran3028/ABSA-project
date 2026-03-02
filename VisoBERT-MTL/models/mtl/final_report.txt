@@ -1,0 +1,75 @@
+================================================================================
+VISOBERT MULTI-TASK LEARNING FOR VIETNAMESE ABSA
+Joint Training Results (AD + SC)
+================================================================================
+
+Training Date: 2025-11-14 03:44:21
+Model: ViSoBERT (Pretrained BERT) with 2 Task Heads
+Loss: Combined Focal Loss (AD=Binary Focal, SC=Multi-label Focal)
+Loss Weights: AD=0.5, SC=0.5
+
+================================================================================
+TASK 1: ASPECT DETECTION (Binary Classification)
+================================================================================
+
+Test Accuracy:  93.61%
+Test F1 Score:  82.41%
+Test Precision: 76.18%
+Test Recall:    90.63%
+
+Per-Aspect Results (AD):
+--------------------------------------------------------------------------------
+Battery         Accuracy:  97.45%  F1 Score:  93.01%  Precision:  89.72%  Recall:  96.56%
+Camera          Accuracy:  98.12%  F1 Score:  92.18%  Precision:  85.94%  Recall:  99.40%
+Performance     Accuracy:  90.35%  F1 Score:  75.59%  Precision:  63.53%  Recall:  93.31%
+Display         Accuracy:  97.05%  F1 Score:  83.21%  Precision:  75.17%  Recall:  93.16%
+Design          Accuracy:  90.88%  F1 Score:  78.62%  Precision:  70.22%  Recall:  89.29%
+Packaging       Accuracy:  96.25%  F1 Score:  89.31%  Precision:  85.09%  Recall:  93.98%
+Price           Accuracy:  96.11%  F1 Score:  91.16%  Precision:  87.68%  Recall:  94.92%
+Shop_Service    Accuracy:  94.77%  F1 Score:  83.88%  Precision:  76.32%  Recall:  93.12%
+Shipping        Accuracy:  95.71%  F1 Score:  90.93%  Precision:  85.60%  Recall:  96.98%
+General         Accuracy:  74.40%  F1 Score:  64.30%  Precision:  52.04%  Recall:  84.11%
+Others          Accuracy:  98.66%  F1 Score:  64.29%  Precision:  66.67%  Recall:  62.07%
+
+================================================================================
+TASK 2: SENTIMENT CLASSIFICATION (3-Class per Aspect)
+================================================================================
+
+Test Accuracy:  95.01%
+Test F1 Score:  93.88%
+Test Precision: 94.63%
+Test Recall:    93.54%
+
+Per-Aspect Results (SC):
+--------------------------------------------------------------------------------
+Battery         Accuracy:  94.66%  F1 Score:  92.85%  Precision:  94.63%  Recall:  91.33%
+Camera          Accuracy:  92.77%  F1 Score:  93.28%  Precision:  94.28%  Recall:  92.40%
+Performance     Accuracy:  94.56%  F1 Score:  94.76%  Precision:  93.57%  Recall:  96.15%
+Display         Accuracy:  94.02%  F1 Score:  94.34%  Precision:  95.54%  Recall:  93.44%
+Design          Accuracy:  95.00%  F1 Score:  95.21%  Precision:  95.52%  Recall:  94.91%
+Packaging       Accuracy:  95.18%  F1 Score:  95.31%  Precision:  93.85%  Recall:  97.00%
+Price           Accuracy:  95.24%  F1 Score:  87.03%  Precision:  91.50%  Recall:  85.21%
+Shop_Service    Accuracy:  96.79%  F1 Score:  95.48%  Precision:  94.83%  Recall:  96.18%
+Shipping        Accuracy:  96.98%  F1 Score:  97.53%  Precision:  97.89%  Recall:  97.20%
+General         Accuracy:  94.87%  F1 Score:  92.99%  Precision:  94.66%  Recall:  91.59%
+
+================================================================================
+OUTPUT FILES
+================================================================================
+
+Model:
+  - Best model: VisoBERT-MTL/models/mtl/best_model.pt
+  - Training history: VisoBERT-MTL/models/mtl/training_history.csv
+
+Results:
+  - Test results: VisoBERT-MTL/models/mtl/test_results.json
+  - Predictions: VisoBERT-MTL/models/mtl/test_predictions_detailed.csv
+
+Confusion Matrices:
+  - AD confusion matrix: VisoBERT-MTL/models/mtl/confusion_matrix_ad.png
+  - SC overall confusion matrix: VisoBERT-MTL/models/mtl/confusion_matrix_sc_overall.png
+  - SC per-aspect confusion matrices: VisoBERT-MTL/models/mtl/confusion_matrix_sc_per_aspect.png
+
+================================================================================
+TRAINING COMPLETE
+================================================================================
