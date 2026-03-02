@@ -420,13 +420,22 @@ def main(args: argparse.Namespace):
     logging.info("Starting phoBERT-MTL training")
     
     # Initialize wandb
-    wandb.login(key=os.environ.get("WANDB_API_KEY"))
-    wandb.init(
-        project="ABSA-Vietnamese",
-        name="phoBERT-MTL",
-        config=config,
-        tags=["mtl", "phobert"],
-    )
+    try:
+        wandb_key = os.environ.get("WANDB_API_KEY")
+        if wandb_key:
+            wandb.login(key=wandb_key)
+        else:
+            wandb.login()
+        wandb.init(
+            project="ABSA-Vietnamese",
+            name="PhoBERT-MTL",
+            config=config,
+            tags=["mtl", "phobert"],
+        )
+    except Exception as e:
+        logging.warning(f"Wandb initialization failed: {e}. Training will continue without wandb.")
+        os.environ["WANDB_MODE"] = "disabled"
+        wandb.init(mode="disabled")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Device: {device}")

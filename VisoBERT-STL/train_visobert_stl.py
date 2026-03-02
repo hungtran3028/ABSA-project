@@ -1436,13 +1436,22 @@ def main(args: argparse.Namespace):
     config = load_config(args.config)
     
     # Initialize wandb
-    wandb.login(key=os.environ.get("WANDB_API_KEY"))
-    wandb.init(
-        project="ABSA-Vietnamese",
-        name="ViSoBERT-STL",
-        config=config,
-        tags=["stl", "visobert"],
-    )
+    try:
+        wandb_key = os.environ.get("WANDB_API_KEY")
+        if wandb_key:
+            wandb.login(key=wandb_key)
+        else:
+            wandb.login()
+        wandb.init(
+            project="ABSA-Vietnamese",
+            name="ViSoBERT-STL",
+            config=config,
+            tags=["stl", "visobert"],
+        )
+    except Exception as e:
+        logging.warning(f"Wandb initialization failed: {e}. Training will continue without wandb.")
+        os.environ["WANDB_MODE"] = "disabled"
+        wandb.init(mode="disabled")
     
     # Stage 1: Aspect Detection
     ad_output_dir: Optional[str] = None
