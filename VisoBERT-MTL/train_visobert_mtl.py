@@ -25,6 +25,7 @@ from datetime import datetime
 from typing import Dict, Any
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
 from transformers import AutoTokenizer, get_cosine_schedule_with_warmup
+import wandb
 
 # Import from VisoBERT-STL for focal losses
 import sys
@@ -420,6 +421,15 @@ def main(args: argparse.Namespace):
     log_file = setup_logging(output_dir)
     logging.info("Starting ViSoBERT-MTL training")
     
+    # Initialize wandb
+    wandb.login(key=os.environ.get("WANDB_API_KEY"))
+    wandb.init(
+        project="ABSA-Vietnamese",
+        name="ViSoBERT-MTL",
+        config=config,
+        tags=["mtl", "visobert"],
+    )
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Device: {device}")
     
@@ -599,6 +609,20 @@ def main(args: argparse.Namespace):
             'val_selection_metric': current_selection_metric
         })
         
+        # Log to wandb
+        wandb.log({
+            'epoch': epoch,
+            'train/loss': train_loss,
+            'train/ad_loss': train_ad_loss,
+            'train/sc_loss': train_sc_loss,
+            'val/ad_accuracy': ad_acc,
+            'val/ad_f1': ad_f1,
+            'val/sc_accuracy': sc_acc,
+            'val/sc_f1': sc_f1,
+            'val/combined_f1': current_selection_metric,
+            'learning_rate': scheduler.get_last_lr()[0],
+        })
+        
         # Save best model
         metric_improvement = current_selection_metric - best_selection_metric
         print(f"   Improvement over best: {metric_improvement*100:.2f}% "
@@ -683,6 +707,9 @@ def main(args: argparse.Namespace):
     print("VISOBERT-MTL TRAINING COMPLETE!")
     print("="*80)
     print(f"\nAll results saved to: {output_dir}")
+    
+    # Finish wandb
+    wandb.finish()
 
 
 if __name__ == '__main__':

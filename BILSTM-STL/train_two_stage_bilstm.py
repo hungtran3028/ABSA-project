@@ -26,6 +26,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
 from transformers import AutoTokenizer, get_cosine_schedule_with_warmup
+import wandb
 
 # Stage 1: Aspect Detection
 from model_bilstm_ad import BiLSTM_AspectDetection
@@ -294,6 +295,14 @@ def train_aspect_detection(config: dict, args: argparse.Namespace) -> str:
             'val_f1': val_metrics['overall_f1']
         })
         
+        # Log AD metrics to wandb
+        wandb.log({
+            'ad/epoch': epoch,
+            'ad/train_loss': train_loss,
+            'ad/val_accuracy': val_metrics['overall_accuracy'],
+            'ad/val_f1': val_metrics['overall_f1'],
+        })
+        
         # Save best model
         if val_metrics['overall_f1'] > best_f1:
             best_f1 = val_metrics['overall_f1']
@@ -431,9 +440,9 @@ def evaluate_sc(model, dataloader, device, aspect_names):
     
     if aspect_metrics:
         overall_accuracy = np.mean([m['accuracy'] for m in aspect_metrics.values()])
-    overall_f1 = np.mean([m['f1'] for m in aspect_metrics.values()])
-    overall_precision = np.mean([m['precision'] for m in aspect_metrics.values()])
-    overall_recall = np.mean([m['recall'] for m in aspect_metrics.values()])
+        overall_f1 = np.mean([m['f1'] for m in aspect_metrics.values()])
+        overall_precision = np.mean([m['precision'] for m in aspect_metrics.values()])
+        overall_recall = np.mean([m['recall'] for m in aspect_metrics.values()])
     else:
         overall_accuracy = 0.0
         overall_f1 = 0.0
@@ -647,6 +656,14 @@ def train_sentiment_classification(config: dict, args: argparse.Namespace) -> st
             'val_f1': val_metrics['overall_f1']
         })
         
+        # Log SC metrics to wandb
+        wandb.log({
+            'sc/epoch': epoch,
+            'sc/train_loss': train_loss,
+            'sc/val_accuracy': val_metrics['overall_accuracy'],
+            'sc/val_f1': val_metrics['overall_f1'],
+        })
+        
         # Save best model
         if val_metrics['overall_accuracy'] > best_acc:
             best_acc = val_metrics['overall_accuracy']
@@ -826,6 +843,15 @@ def main(args: argparse.Namespace):
     print(f"\nLoading config from: {args.config}")
     config = load_config(args.config)
     
+    # Initialize wandb
+    wandb.login(key=os.environ.get("WANDB_API_KEY"))
+    wandb.init(
+        project="ABSA-Vietnamese",
+        name="BiLSTM-STL",
+        config=config,
+        tags=["stl", "bilstm"],
+    )
+    
     # Stage 1: Aspect Detection
     ad_output_dir = train_aspect_detection(config, args)
     
@@ -844,6 +870,9 @@ def main(args: argparse.Namespace):
     print(f"  - AD: {ad_output_dir}")
     print(f"  - SC: {sc_output_dir}")
     print(f"  - Final: {final_results_dir}")
+    
+    # Finish wandb
+    wandb.finish()
 
 
 if __name__ == '__main__':

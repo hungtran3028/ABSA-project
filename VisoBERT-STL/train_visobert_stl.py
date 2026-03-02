@@ -17,6 +17,7 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, con
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
+import wandb
 import os
 import yaml
 import argparse
@@ -423,6 +424,19 @@ def train_aspect_detection(config: dict, args: argparse.Namespace) -> str:
         if val_loss is not None:
             history_entry['val_loss'] = val_loss
         history.append(history_entry)
+        
+        # Log AD metrics to wandb
+        ad_wandb_log = {
+            'ad/epoch': epoch,
+            'ad/train_loss': train_loss,
+            'ad/val_accuracy': val_metrics['overall_accuracy'],
+            'ad/val_f1': val_metrics['overall_f1'],
+            'ad/val_precision': val_metrics['overall_precision'],
+            'ad/val_recall': val_metrics['overall_recall'],
+        }
+        if val_loss is not None:
+            ad_wandb_log['ad/val_loss'] = val_loss
+        wandb.log(ad_wandb_log)
         
         # Check for improvement and early stopping
         current_f1 = val_metrics['overall_f1']
@@ -967,6 +981,17 @@ def train_sentiment_classification(config: dict, args: argparse.Namespace) -> st
             'val_recall': val_metrics['overall_recall']
         })
         
+        # Log SC metrics to wandb
+        wandb.log({
+            'sc/epoch': epoch,
+            'sc/train_loss': train_loss,
+            'sc/val_loss': val_metrics['val_loss'],
+            'sc/val_accuracy': val_metrics['overall_accuracy'],
+            'sc/val_f1': val_metrics['overall_f1'],
+            'sc/val_precision': val_metrics['overall_precision'],
+            'sc/val_recall': val_metrics['overall_recall'],
+        })
+        
         # Check for improvement and early stopping
         current_f1 = val_metrics['overall_f1']
         improvement = current_f1 - best_f1
@@ -1410,6 +1435,15 @@ def main(args: argparse.Namespace):
     print(f"\nLoading config from: {args.config}")
     config = load_config(args.config)
     
+    # Initialize wandb
+    wandb.login(key=os.environ.get("WANDB_API_KEY"))
+    wandb.init(
+        project="ABSA-Vietnamese",
+        name="ViSoBERT-STL",
+        config=config,
+        tags=["stl", "visobert"],
+    )
+    
     # Stage 1: Aspect Detection
     ad_output_dir: Optional[str] = None
     if config['two_stage'].get('train_ad_first', True):
@@ -1442,6 +1476,9 @@ def main(args: argparse.Namespace):
     print(f"  - AD: {ad_output_dir if ad_output_dir is not None else 'SKIPPED'}")
     print(f"  - SC: {sc_output_dir}")
     print(f"  - Final: {final_results_dir}")
+    
+    # Finish wandb
+    wandb.finish()
 
 
 if __name__ == '__main__':
