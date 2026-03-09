@@ -450,7 +450,7 @@ def train_aspect_detection(config: dict, args: argparse.Namespace) -> str:
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
+                
                 'metrics': val_metrics
             }, best_path)
             print(f"\nNew best F1: {best_f1*100:.2f}% (improvement: +{improvement*100:.4f}%)")
@@ -1004,7 +1004,7 @@ def train_sentiment_classification(config: dict, args: argparse.Namespace) -> st
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
+                
                 'metrics': val_metrics
             }, best_path)
             print(f"\nNew best F1: {best_f1*100:.2f}% (improvement: +{improvement*100:.4f}%)")

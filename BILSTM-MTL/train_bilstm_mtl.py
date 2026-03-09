@@ -554,7 +554,7 @@ def main(args: argparse.Namespace):
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
+                
                 'metrics': val_metrics
             }, os.path.join(output_dir, 'best_model.pt'))
             print(f"\nNew best combined metric: {best_combined_metric*100:.2f}%")

@@ -326,7 +326,7 @@ def train(config):
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
+                
                 'best_f1': best_f1,
                 'config': config
             }, checkpoint_path)
