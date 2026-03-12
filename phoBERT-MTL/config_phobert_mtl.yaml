@@ -70,7 +70,7 @@ training:
   warmup_ratio: 0.06
   
   # Training duration
-  num_train_epochs: 12
+  num_train_epochs: 15
   
   # Mixed precision
   fp16: true
