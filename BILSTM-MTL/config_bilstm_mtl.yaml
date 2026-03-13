@@ -22,10 +22,19 @@ model:
   # Tokenizer
   tokenizer_name: "vinai/phobert-base-v2"
 
-  # Trainable embeddings
-  vocab_size: 30000
-  embedding_dim: 300
-  padding_idx: 0
+  # Pretrained PhoBERT embeddings
+  use_phobert_embeddings: true
+  freeze_embeddings: true
+
+  # Attention mechanism
+  use_attention: true
+  attention_heads: 8
+  attention_dropout: 0.1
+
+  # Architecture
+  vocab_size: 64000
+  embedding_dim: 768 # Match PhoBERT
+  padding_idx: 1
 
   # Shared BiLSTM backbone
   lstm_hidden_size: 256
@@ -73,7 +82,7 @@ training:
   gradient_accumulation_steps: 2
 
   # Optimizer
-  learning_rate: 3.0e-4
+  learning_rate: 1.0e-3 # Optimized LR for BiLSTM with Attention
   weight_decay: 0.01
   max_grad_norm: 1.0
 
@@ -82,7 +91,7 @@ training:
   warmup_ratio: 0.1
 
   # Training duration
-  num_train_epochs: 20
+  num_train_epochs: 30
 
   # Mixed precision
   fp16: true
@@ -97,7 +106,7 @@ training:
   save_total_limit: 3
 
   # Early stopping
-  early_stopping_patience: 7
+  early_stopping_patience: 10
   early_stopping_threshold: 0.001
 
   # Logging
@@ -111,6 +120,13 @@ multi_task:
   # Loss weights (combined loss = alpha * L_AD + beta * L_SC)
   loss_weight_ad: 1.0 # Weight for AD loss
   loss_weight_sc: 1.0 # Weight for SC loss
+
+  # SC Masking: Only calculate SC loss for aspects present in AD labels
+  sc_loss_masking: true
+
+  # Loss Settings
+  use_focal_loss: true
+  focal_gamma: 2.0
 
   # AD task settings
   aspect_detection:
