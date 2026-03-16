@@ -84,7 +84,7 @@ two_stage:
     focal_alpha: "auto" # Auto-calculate from data (inverse frequency)
     epochs: 10 # AD training epochs
     warmup_ratio: 0.08 # Warmup ratio for AD stage (8% - higher for non-oversampled data)
-    early_stopping_patience: 2 # Patience for AD stage
+    early_stopping_patience: 3 # Patience for AD stage
     early_stopping_threshold: 0.0005 # Minimum improvement threshold (0.05% F1)
 
   # Stage 2: Sentiment Classification
@@ -94,7 +94,7 @@ two_stage:
     focal_alpha: "auto" # Auto-calculate from data
     epochs: 10 # Standard epochs for non-oversampled data
     warmup_ratio: 0.06 # Warmup ratio for SC stage
-    early_stopping_patience: 2 # Patience for SC stage
+    early_stopping_patience: 3 # Patience for SC stage
     early_stopping_threshold: 0.0005 # Minimum improvement threshold (0.05% F1)
 
   # Error analysis
