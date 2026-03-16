@@ -32,7 +32,7 @@ class PhoBERT_MTL(nn.Module):
     
     def __init__(
         self,
-        model_name="vinai/phobert-base",
+        model_name="vinai/phobert-base-v2",
         num_aspects=11,
         num_sentiments=3,
         hidden_size=512,
@@ -172,7 +172,7 @@ def test_model():
     # Create model
     print("\n1. Creating model...")
     model = PhoBERT_MTL(
-        model_name="vinai/phobert-base",
+        model_name="vinai/phobert-base-v2",
         num_aspects=11,
         num_sentiments=3,
         hidden_size=512,
@@ -189,7 +189,7 @@ def test_model():
     print("\n2. Testing forward pass...")
     from transformers import AutoTokenizer
     
-    tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
+    tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base-v2")
     test_text = "Pin tốt camera xấu"
     
     encoding = tokenizer(test_text, max_length=128, padding='max_length', 

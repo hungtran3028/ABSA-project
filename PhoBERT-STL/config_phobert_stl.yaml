@@ -4,7 +4,7 @@
 #   Stage 1 (AD): Aspect Detection - Binary classification for 11 aspects
 #   Stage 2 (SC): Sentiment Classification - 3-class for 11 aspects
 #
-# Base Model: vinai/phobert-base
+# Base Model: vinai/phobert-base-v2
 # - Vietnamese BERT model pretrained on large Vietnamese corpus
 # - Stage 1: 11 binary outputs (aspect mentioned or not)
 # - Stage 2: 11 × 3 multi-class outputs (positive/negative/neutral per aspect)
@@ -28,7 +28,7 @@ paths:
   final_results_dir: "PhoBERT-STL/results/two_stage_training"
 
 model:
-  name: "vinai/phobert-base" # PhoBERT base model; we fine-tune for multi-label ABSA
+  name: "vinai/phobert-base-v2" # PhoBERT base model; we fine-tune for multi-label ABSA
   # Note: This base model is not sentiment-specific; fine-tuning handles aspect+sentiment outputs
   num_labels: 33 # 11 aspects × 3 sentiments = 33 binary outputs
   num_aspects: 11

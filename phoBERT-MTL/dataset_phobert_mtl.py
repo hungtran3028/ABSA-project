@@ -205,7 +205,7 @@ def test_dataset():
     
     # Load tokenizer
     print("\n1. Loading tokenizer...")
-    tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
+    tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base-v2")
     
     # Create dataset
     print("\n2. Creating dataset...")

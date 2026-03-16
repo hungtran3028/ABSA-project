@@ -25,7 +25,7 @@ paths:
 
 model:
   # Pretrained phoBERT
-  name: "vinai/phobert-base"
+  name: "vinai/phobert-base-v2"
 
   # Task heads
   hidden_size: 512

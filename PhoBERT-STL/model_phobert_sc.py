@@ -33,7 +33,7 @@ class MultiLabelPhoBERT(nn.Module):
     
     def __init__(
         self, 
-        model_name="vinai/phobert-base",
+        model_name="vinai/phobert-base-v2",
         num_aspects=11, 
         num_sentiments=3,
         hidden_size=512,
@@ -159,7 +159,7 @@ def test_model():
     # Create model
     print("\n1. Creating model...")
     model = MultiLabelPhoBERT(
-        model_name="vinai/phobert-base",
+        model_name="vinai/phobert-base-v2",
         num_aspects=11,
         num_sentiments=3,
         hidden_size=512,
@@ -175,7 +175,7 @@ def test_model():
     
     # Test forward pass
     print("\n2. Testing forward pass...")
-    tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
+    tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base-v2")
     
     # Test text
     test_text = "Pin tot cam era xau"

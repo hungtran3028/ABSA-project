@@ -34,7 +34,7 @@ class AspectDetectionModel(nn.Module):
     
     def __init__(
         self, 
-        model_name="vinai/phobert-base",
+        model_name="vinai/phobert-base-v2",
         num_aspects=11,
         hidden_size=512,
         dropout=0.3
