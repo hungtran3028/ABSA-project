@@ -7,7 +7,7 @@ Based on research papers:
 - "Enhancing Text Sentiment Classification with Hybrid CNN-BiLSTM" (JAIT 2024)
 
 Architecture:
-    Input → Embedding → SpatialDropout → BiLSTM → Conv1D → 
+    Input → Embedding → SpatialDropout → BiLSTM → MultiHeadAttention → Conv1D → 
     [GlobalAvgPool + GlobalMaxPool] → Concatenate → Dense → Reshape to [batch, 11, 3]
     
 Multi-Label: Predicts sentiment (Positive/Negative/Neutral) for each of 11 aspects
@@ -128,6 +128,15 @@ class BiLSTM_SentimentClassification(nn.Module):
             bidirectional=True
         )
         
+        # NEW: MultiHead Self-Attention
+        self.self_attention = nn.MultiheadAttention(
+            embed_dim=lstm_hidden_size * 2,
+            num_heads=8,
+            dropout=0.1,
+            batch_first=True
+        )
+        self.attn_layer_norm = nn.LayerNorm(lstm_hidden_size * 2)
+        
         # 4. Conv1D layer (applied after BiLSTM)
         # Input: [batch, seq_len, lstm_hidden*2]
         # Conv1d expects: [batch, channels, seq_len]
@@ -183,6 +192,13 @@ class BiLSTM_SentimentClassification(nn.Module):
         
         # 3. BiLSTM
         lstm_output, (h_n, c_n) = self.bilstm(embeddings)  # [batch, seq_len, lstm_hidden*2]
+        
+        # NEW: MultiHead Self-Attention
+        # Query, Key, Value are all lstm_output for self-attention
+        attn_out, _ = self.self_attention(lstm_output, lstm_output, lstm_output)
+        
+        # Add & Norm (Residual connection)
+        lstm_output = self.attn_layer_norm(lstm_output + attn_out)
         
         # 4. Conv1D (transpose for Conv1d: [batch, channels, seq_len])
         lstm_output_t = lstm_output.transpose(1, 2)  # [batch, lstm_hidden*2, seq_len]

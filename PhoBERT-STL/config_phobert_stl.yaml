@@ -66,7 +66,7 @@ training:
   per_device_eval_batch_size: 32
   gradient_accumulation_steps: 4
   # Optimizer settings
-  optim: "adamw_bnb_8bit"
+  optim: "AdamW"
   learning_rate: 2.0e-5
   weight_decay: 0.01
   adam_beta1: 0.9
@@ -137,7 +137,7 @@ reproducibility:
   shuffle_seed: 42 # Seed for data shuffling
 
   # Model training seeds
-  training_seed: 100 # Seed for PyTorch/Transformers training
+  training_seed: 42 # Seed for PyTorch/Transformers training
   # Note: dataloader_seed removed - only training_seed is used for reproducibility
 
   # Notes:

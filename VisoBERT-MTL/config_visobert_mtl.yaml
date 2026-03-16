@@ -125,7 +125,7 @@ multi_task:
 
 # Reproducibility
 reproducibility:
-  seed: 100
+  seed: 42
   deterministic: true
 
 general:

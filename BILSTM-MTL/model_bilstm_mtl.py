@@ -6,7 +6,7 @@ One shared backbone with two task-specific heads:
     - Head 2: Sentiment Classification (SC) - 3-class per aspect (11 × 3)
 
 Architecture:
-    Input → Embedding → SpatialDropout → BiLSTM → Conv1D → Pooling
+    Input → Embedding → SpatialDropout → BiLSTM → MultiHeadAttention → Conv1D → Pooling
                                 ↓
                     ┌───────────┴───────────┐
                     │                       │
@@ -109,6 +109,15 @@ class BiLSTM_MTL(nn.Module):
             bidirectional=True
         )
         
+        # NEW: MultiHead Self-Attention
+        self.self_attention = nn.MultiheadAttention(
+            embed_dim=lstm_hidden_size * 2,
+            num_heads=8,
+            dropout=0.1,
+            batch_first=True
+        )
+        self.attn_layer_norm = nn.LayerNorm(lstm_hidden_size * 2)
+        
         # 4. Conv1D
         self.conv1d = nn.Conv1d(
             in_channels=lstm_hidden_size * 2,  # Bidirectional
@@ -173,6 +182,14 @@ class BiLSTM_MTL(nn.Module):
         
         # 3. BiLSTM
         lstm_out, _ = self.bilstm(x)  # [batch, seq_len, lstm_hidden*2]
+        
+        # NEW: MultiHead Self-Attention
+        # Query, Key, Value are all lstm_out for self-attention
+        # attn_out shape is same as lstm_out: [batch, seq_len, lstm_hidden*2]
+        attn_out, _ = self.self_attention(lstm_out, lstm_out, lstm_out)
+        
+        # Add & Norm (Residual connection)
+        lstm_out = self.attn_layer_norm(lstm_out + attn_out)
         
         # 4. Conv1D (need to transpose for Conv1D)
         conv_input = lstm_out.transpose(1, 2)  # [batch, lstm_hidden*2, seq_len]
