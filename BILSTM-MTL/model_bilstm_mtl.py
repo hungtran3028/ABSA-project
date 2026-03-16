@@ -61,7 +61,10 @@ class BiLSTM_MTL(nn.Module):
         conv_kernel_size=3,
         dense_hidden_size=256,
         dense_dropout=0.3,
-        padding_idx=0
+        padding_idx=0,
+        use_phobert_embeddings=False,
+        freeze_embeddings=True,
+        phobert_model_name=None
     ):
         """
         Args:
@@ -78,6 +81,9 @@ class BiLSTM_MTL(nn.Module):
             dense_hidden_size: Dense layer size
             dense_dropout: Dense dropout
             padding_idx: Padding token index
+            use_phobert_embeddings: If True, load pretrained PhoBERT embeddings
+            freeze_embeddings: If True, freeze embedding weights (no gradient)
+            phobert_model_name: HuggingFace model name for PhoBERT (e.g. 'vinai/phobert-base-v2')
         """
         super(BiLSTM_MTL, self).__init__()
         
@@ -89,12 +95,35 @@ class BiLSTM_MTL(nn.Module):
         # SHARED BACKBONE
         # =====================================================================
         
-        # 1. Trainable embedding layer
-        self.embeddings = nn.Embedding(
-            num_embeddings=vocab_size,
-            embedding_dim=embedding_dim,
-            padding_idx=padding_idx
-        )
+        # 1. Embedding layer (pretrained PhoBERT or random)
+        if use_phobert_embeddings and phobert_model_name:
+            print(f"[BiLSTM_MTL] Loading pretrained embeddings from {phobert_model_name}...")
+            from transformers import AutoModel
+            phobert_model = AutoModel.from_pretrained(phobert_model_name)
+            phobert_weights = phobert_model.embeddings.word_embeddings.weight.data.clone()
+            del phobert_model
+            import gc; gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            vocab_size = phobert_weights.shape[0]
+            embedding_dim = phobert_weights.shape[1]
+            self.embedding_dim = embedding_dim
+            
+            self.embeddings = nn.Embedding.from_pretrained(
+                phobert_weights,
+                freeze=freeze_embeddings,
+                padding_idx=padding_idx
+            )
+            freeze_str = "FROZEN" if freeze_embeddings else "TRAINABLE"
+            print(f"[BiLSTM_MTL] ✅ PhoBERT embeddings loaded: {vocab_size} × {embedding_dim} ({freeze_str})")
+        else:
+            self.embeddings = nn.Embedding(
+                num_embeddings=vocab_size,
+                embedding_dim=embedding_dim,
+                padding_idx=padding_idx
+            )
+            print(f"[BiLSTM_MTL] Using random embeddings: {vocab_size} × {embedding_dim} (TRAINABLE)")
         
         # 2. Spatial Dropout
         self.spatial_dropout = nn.Dropout2d(p=spatial_dropout)

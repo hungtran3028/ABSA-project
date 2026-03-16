@@ -74,7 +74,10 @@ class BiLSTM_SentimentClassification(nn.Module):
         conv_kernel_size=3,
         dense_hidden_size=256,
         dense_dropout=0.3,
-        padding_idx=0
+        padding_idx=0,
+        use_phobert_embeddings=False,
+        freeze_embeddings=True,
+        phobert_model_name=None
     ):
         """
         Args:
@@ -91,6 +94,9 @@ class BiLSTM_SentimentClassification(nn.Module):
             dense_hidden_size: Hidden size of dense layer
             dense_dropout: Dropout for dense layer
             padding_idx: Index for padding token
+            use_phobert_embeddings: If True, load pretrained PhoBERT embeddings
+            freeze_embeddings: If True, freeze embedding weights (no gradient)
+            phobert_model_name: HuggingFace model name for PhoBERT
         """
         super(BiLSTM_SentimentClassification, self).__init__()
         
@@ -108,13 +114,37 @@ class BiLSTM_SentimentClassification(nn.Module):
         # Sentiment names
         self.sentiment_names = ['Positive', 'Negative', 'Neutral']
         
-        # 1. Trainable embedding layer (NO pretrained model)
-        self.embeddings = nn.Embedding(
-            num_embeddings=vocab_size,
-            embedding_dim=embedding_dim,
-            padding_idx=padding_idx
-        )
+        # 1. Embedding layer (pretrained PhoBERT or random)
+        if use_phobert_embeddings and phobert_model_name:
+            print(f"[BiLSTM_SC] Loading pretrained embeddings from {phobert_model_name}...")
+            from transformers import AutoModel
+            phobert_model = AutoModel.from_pretrained(phobert_model_name)
+            phobert_weights = phobert_model.embeddings.word_embeddings.weight.data.clone()
+            del phobert_model
+            import gc; gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            vocab_size = phobert_weights.shape[0]
+            embedding_dim = phobert_weights.shape[1]
+            self.embedding_dim = embedding_dim
+            
+            self.embeddings = nn.Embedding.from_pretrained(
+                phobert_weights,
+                freeze=freeze_embeddings,
+                padding_idx=padding_idx
+            )
+            freeze_str = "FROZEN" if freeze_embeddings else "TRAINABLE"
+            print(f"[BiLSTM_SC] ✅ PhoBERT embeddings loaded: {vocab_size} × {embedding_dim} ({freeze_str})")
+        else:
+            self.embeddings = nn.Embedding(
+                num_embeddings=vocab_size,
+                embedding_dim=embedding_dim,
+                padding_idx=padding_idx
+            )
+            print(f"[BiLSTM_SC] Using random embeddings: {vocab_size} × {embedding_dim} (TRAINABLE)")
         
+
         # 2. Spatial Dropout (applied after embeddings)
         self.spatial_dropout = nn.Dropout2d(spatial_dropout)
         

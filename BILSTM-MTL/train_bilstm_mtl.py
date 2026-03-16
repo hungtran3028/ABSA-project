@@ -444,7 +444,10 @@ def main(args: argparse.Namespace):
         conv_kernel_size=config['model']['conv_kernel_size'],
         dense_hidden_size=config['model']['dense_hidden_size'],
         dense_dropout=config['model']['dense_dropout'],
-        padding_idx=config['model']['padding_idx']
+        padding_idx=config['model']['padding_idx'],
+        use_phobert_embeddings=config['model'].get('use_phobert_embeddings', False),
+        freeze_embeddings=config['model'].get('freeze_embeddings', True),
+        phobert_model_name=config['model'].get('tokenizer_name', None)
     )
     model = model.to(device)
     
