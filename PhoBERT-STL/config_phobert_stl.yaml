@@ -132,12 +132,12 @@ general:
 # ========================================================================
 reproducibility:
   # Data preprocessing seeds
-  data_split_seed: 42 # Seed for train/val/test split
-  oversampling_seed: 42 # Seed for aspect-wise oversampling
-  shuffle_seed: 42 # Seed for data shuffling
+  data_split_seed: 100 # Seed for train/val/test split
+  oversampling_seed: 100 # Seed for aspect-wise oversampling
+  shuffle_seed: 100 # Seed for data shuffling
 
   # Model training seeds
-  training_seed: 42 # Seed for PyTorch/Transformers training
+  training_seed: 100 # Seed for PyTorch/Transformers training
   # Note: dataloader_seed removed - only training_seed is used for reproducibility
 
   # Notes:

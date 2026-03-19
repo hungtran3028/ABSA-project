@@ -1,10 +1,7 @@
 # BiLSTM Sequential Single-Task Learning Configuration
 # ========================================================================
-# Two-stage training approach:
-#   Stage 1 (AD): Aspect Detection - Binary classification for 11 aspects
-#   Stage 2 (SC): Sentiment Classification - 3-class for 11 aspects
-#
-# Model: BiLSTM + CNN (NO pretrained embeddings, trainable embeddings only)
+# Uses PhoBERT as frozen feature extractor (NOT static embedding table)
+# Two-stage: Stage 1 (AD) + Stage 2 (SC) with separate BiLSTM models
 # ========================================================================
 
 paths:
@@ -12,49 +9,20 @@ paths:
   train_file: "BILSTM-STL/data/train_multilabel.csv"
   validation_file: "BILSTM-STL/data/validation_multilabel.csv"
   test_file: "BILSTM-STL/data/test_multilabel.csv"
-
-  # Stage 1: Aspect Detection output
   ad_output_dir: "BILSTM-STL/models/aspect_detection"
-
-  # Stage 2: Sentiment Classification output
   sc_output_dir: "BILSTM-STL/models/sentiment_classification"
-
-  # Final results
   final_results_dir: "BILSTM-STL/results/two_stage_training"
 
 model:
-  # Tokenizer
-  tokenizer_name: "vinai/phobert-base-v2"
+  # PhoBERT feature extractor
+  embedding_model: "vinai/phobert-base-v2"
 
-  # Pretrained PhoBERT embeddings
-  use_phobert_embeddings: true
-  freeze_embeddings: true
-
-  # Attention mechanism
-  use_attention: true
-  attention_heads: 8
-  attention_dropout: 0.1
-
-  # Architecture
-  vocab_size: 64000
+  # Architecture (matches old notebook that achieved SC=95%)
   embedding_dim: 768
-  padding_idx: 1
-
-  # BiLSTM architecture
   lstm_hidden_size: 256
   lstm_num_layers: 2
   lstm_dropout: 0.3
-
-  # Spatial Dropout
-  spatial_dropout: 0.2
-
-  # Conv1D layer
-  conv_filters: 128
-  conv_kernel_size: 3
-
-  # Dense layers
-  dense_hidden_size: 256
-  dense_dropout: 0.3
+  bidirectional: true
 
   # Task settings
   num_aspects: 11
@@ -80,68 +48,34 @@ sentiment_labels:
   neutral: 2
 
 training:
-  # Batch sizes
-  per_device_train_batch_size: 32
-  per_device_eval_batch_size: 64
-  gradient_accumulation_steps: 2
-
-  # Optimizer settings
-  learning_rate: 1.0e-3 # Optimized LR for BiLSTM with Attention
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 32
+  learning_rate: 1.0e-3
   weight_decay: 0.01
   max_grad_norm: 1.0
-
-  # Learning rate scheduler
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.1
-
-  # Mixed precision
   fp16: true
-
-  # DataLoader settings
-  dataloader_num_workers: 2
-  dataloader_pin_memory: true
-
-  # Evaluation & checkpointing
-  evaluation_strategy: "epoch"
-  save_strategy: "epoch"
-  save_total_limit: 3
-
-  # Logging
   logging_steps: 50
 
-  # Device
-  device: "cuda"
-
-# Reproducibility
+# Reproducibility (matched to Transformer models = seed 100)
 reproducibility:
-  seed: 42
+  seed: 100
   deterministic: true
 
 # Sequential training settings
 two_stage:
-  # Training order
   train_ad_first: true
   train_sc_after: true
 
-  # Loss Settings
-  use_focal_loss: true
-  focal_gamma: 2.0
-
-  # Stage 1: Aspect Detection
+  # Stage 1: Aspect Detection (matched to old notebook = 20 epochs, patience 5)
   aspect_detection:
-    epochs: 25 # Increased for complex architecture
-    metric_for_best_model: "eval_f1_macro"
-    early_stopping_patience: 7
-    use_pos_weight: true # Use pos_weight for class imbalance
-    pos_weight_auto: true # Auto-calculate from data
+    epochs: 20
+    metric_for_best_model: "f1_macro"
+    early_stopping_patience: 5
 
-  # Stage 2: Sentiment Classification
+  # Stage 2: Sentiment Classification (matched to old notebook = 20 epochs, patience 5)
   sentiment_classification:
-    epochs: 25
-    metric_for_best_model: "eval_f1_macro" # Changed to F1 Macro (ABSA standard)
-    early_stopping_patience: 7
-    use_class_weight: true # Use class weights for imbalance
-    class_weight_auto: true # Auto-calculate from data
-
-  # Error analysis
-  run_error_analysis: false # Disable for now (can use multi_label error analysis)
+    epochs: 20
+    metric_for_best_model: "f1_macro"
+    early_stopping_patience: 5

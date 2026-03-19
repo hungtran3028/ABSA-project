@@ -125,9 +125,9 @@ loss:
 
 # Reproducibility
 reproducibility:
-  seed: 42
-  data_split_seed: 42
-  dataloader_seed: 42
+  seed: 100
+  data_split_seed: 100
+  dataloader_seed: 100
   deterministic: true
 
 general:

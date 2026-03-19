@@ -1,19 +1,7 @@
 """
-BiLSTM + CNN Model for Multi-Label Sentiment Classification
-
-Based on research papers:
-- "Aspect Based Sentiment Analysis With Feature Enhanced Attention CNN-BiLSTM" (IEEE 2019)
-- "CNN-BiLSTM model based on multi-level and multi-scale feature extraction" (SPIE 2024)
-- "Enhancing Text Sentiment Classification with Hybrid CNN-BiLSTM" (JAIT 2024)
-
-Architecture:
-    Input → Embedding → SpatialDropout → BiLSTM → MultiHeadAttention → Conv1D → 
-    [GlobalAvgPool + GlobalMaxPool] → Concatenate → Dense → Reshape to [batch, 11, 3]
-    
-Multi-Label: Predicts sentiment (Positive/Negative/Neutral) for each of 11 aspects
-Output: [batch_size, num_aspects, num_sentiments]
-    
-Note: This model uses ONLY BiLSTM + CNN without pretrained embeddings (no BERT, no transformers)
+BiLSTM Sentiment Classification Model (STL)
+=============================================
+Receives pre-computed PhoBERT embeddings → BiLSTM → Additive Attention → SC classifier
 """
 
 import torch
@@ -21,341 +9,73 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class GlobalPooling(nn.Module):
-    """
-    Global Average Pooling + Global Max Pooling
-    Concatenates both pooling strategies for richer representations
-    """
-    def __init__(self):
-        super(GlobalPooling, self).__init__()
+class BiLSTM_SC(nn.Module):
+    """BiLSTM for Sentiment Classification (3-class per aspect)"""
     
-    def forward(self, x):
-        """
-        Args:
-            x: [batch_size, seq_len, features]
-        
-        Returns:
-            pooled: [batch_size, features * 2] (concatenated avg and max pool)
-        """
-        # Global Average Pooling
-        avg_pool = torch.mean(x, dim=1)  # [batch, features]
-        
-        # Global Max Pooling
-        max_pool, _ = torch.max(x, dim=1)  # [batch, features]
-        
-        # Concatenate
-        pooled = torch.cat([avg_pool, max_pool], dim=1)  # [batch, features*2]
-        
-        return pooled
-
-
-class BiLSTM_SentimentClassification(nn.Module):
-    """
-    BiLSTM + CNN Hybrid Model for Multi-Label Sentiment Classification (No Pretrained Models)
-    
-    Architecture: Embedding → SpatialDropout → BiLSTM → Conv1D → 
-                  [GlobalAvgPool + GlobalMaxPool] → Dense → Reshape
-    
-    Multi-label sentiment classification for 11 aspects × 3 sentiments
-    Output: [batch_size, num_aspects, num_sentiments] 
-    """
-    
-    def __init__(
-        self,
-        vocab_size=30000,
-        embedding_dim=300,
-        num_aspects=11,
-        num_sentiments=3,
-        lstm_hidden_size=256,
-        lstm_num_layers=2,
-        lstm_dropout=0.3,
-        spatial_dropout=0.2,
-        conv_filters=128,
-        conv_kernel_size=3,
-        dense_hidden_size=256,
-        dense_dropout=0.3,
-        padding_idx=0,
-        use_phobert_embeddings=False,
-        freeze_embeddings=True,
-        phobert_model_name=None
-    ):
-        """
-        Args:
-            vocab_size: Size of vocabulary
-            embedding_dim: Dimension of embeddings (default: 300)
-            num_aspects: Number of aspects (default: 11)
-            num_sentiments: Number of sentiment classes per aspect (default: 3)
-            lstm_hidden_size: Hidden size of BiLSTM
-            lstm_num_layers: Number of BiLSTM layers
-            lstm_dropout: Dropout for BiLSTM
-            spatial_dropout: Spatial dropout rate for embeddings
-            conv_filters: Number of Conv1D filters
-            conv_kernel_size: Kernel size for Conv1D
-            dense_hidden_size: Hidden size of dense layer
-            dense_dropout: Dropout for dense layer
-            padding_idx: Index for padding token
-            use_phobert_embeddings: If True, load pretrained PhoBERT embeddings
-            freeze_embeddings: If True, freeze embedding weights (no gradient)
-            phobert_model_name: HuggingFace model name for PhoBERT
-        """
-        super(BiLSTM_SentimentClassification, self).__init__()
-        
+    def __init__(self, embedding_dim=768, hidden_size=256, num_layers=2,
+                 num_aspects=11, num_sentiments=3, dropout=0.3, bidirectional=True):
+        super().__init__()
         self.num_aspects = num_aspects
         self.num_sentiments = num_sentiments
-        self.embedding_dim = embedding_dim
         
-        # Aspect names (for reference)
-        self.aspect_names = [
-            'Battery', 'Camera', 'Performance', 'Display', 'Design',
-            'Packaging', 'Price', 'Shop_Service',
-            'Shipping', 'General', 'Others'
-        ]
-        
-        # Sentiment names
-        self.sentiment_names = ['Positive', 'Negative', 'Neutral']
-        
-        # 1. Embedding layer (pretrained PhoBERT or random)
-        if use_phobert_embeddings and phobert_model_name:
-            print(f"[BiLSTM_SC] Loading pretrained embeddings from {phobert_model_name}...")
-            from transformers import AutoModel
-            phobert_model = AutoModel.from_pretrained(phobert_model_name)
-            phobert_weights = phobert_model.embeddings.word_embeddings.weight.data.clone()
-            del phobert_model
-            import gc; gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
-            vocab_size = phobert_weights.shape[0]
-            embedding_dim = phobert_weights.shape[1]
-            self.embedding_dim = embedding_dim
-            
-            self.embeddings = nn.Embedding.from_pretrained(
-                phobert_weights,
-                freeze=freeze_embeddings,
-                padding_idx=padding_idx
-            )
-            freeze_str = "FROZEN" if freeze_embeddings else "TRAINABLE"
-            print(f"[BiLSTM_SC] ✅ PhoBERT embeddings loaded: {vocab_size} × {embedding_dim} ({freeze_str})")
-        else:
-            self.embeddings = nn.Embedding(
-                num_embeddings=vocab_size,
-                embedding_dim=embedding_dim,
-                padding_idx=padding_idx
-            )
-            print(f"[BiLSTM_SC] Using random embeddings: {vocab_size} × {embedding_dim} (TRAINABLE)")
-        
-
-        # 2. Spatial Dropout (applied after embeddings)
-        self.spatial_dropout = nn.Dropout2d(spatial_dropout)
-        
-        # 3. BiLSTM layer
-        self.bilstm = nn.LSTM(
+        self.lstm = nn.LSTM(
             input_size=embedding_dim,
-            hidden_size=lstm_hidden_size,
-            num_layers=lstm_num_layers,
-            dropout=lstm_dropout if lstm_num_layers > 1 else 0,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
             batch_first=True,
-            bidirectional=True
+            dropout=dropout if num_layers > 1 else 0,
+            bidirectional=bidirectional
+        )
+        lstm_output_size = hidden_size * 2 if bidirectional else hidden_size
+        
+        # Additive Attention
+        self.attention = nn.Sequential(
+            nn.Linear(lstm_output_size, 128),
+            nn.Tanh(),
+            nn.Linear(128, 1)
         )
         
-        # NEW: MultiHead Self-Attention
-        self.self_attention = nn.MultiheadAttention(
-            embed_dim=lstm_hidden_size * 2,
-            num_heads=8,
-            dropout=0.1,
-            batch_first=True
+        # Classifier
+        self.classifier = nn.Sequential(
+            nn.Linear(lstm_output_size, 256),
+            nn.LayerNorm(256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(256, num_aspects * num_sentiments)
         )
-        self.attn_layer_norm = nn.LayerNorm(lstm_hidden_size * 2)
-        
-        # 4. Conv1D layer (applied after BiLSTM)
-        # Input: [batch, seq_len, lstm_hidden*2]
-        # Conv1d expects: [batch, channels, seq_len]
-        self.conv1d = nn.Conv1d(
-            in_channels=lstm_hidden_size * 2,  # BiLSTM output
-            out_channels=conv_filters,
-            kernel_size=conv_kernel_size,
-            padding='same'  # Keep same sequence length
-        )
-        
-        # 5. Global Pooling (Average + Max)
-        self.global_pooling = GlobalPooling()
-        
-        # 6. Dense layers
-        pooled_size = conv_filters * 2  # *2 because of avg+max pooling
-        self.dense1 = nn.Linear(pooled_size, dense_hidden_size)
-        self.bn1 = nn.BatchNorm1d(dense_hidden_size)
-        self.dropout = nn.Dropout(dense_dropout)
-        # Output: num_aspects × num_sentiments (will reshape later)
-        self.dense2 = nn.Linear(dense_hidden_size, num_aspects * num_sentiments)
-        
-        print(f"\n[BiLSTM + CNN Model - Multi-Label Sentiment - NO Pretrained Embeddings]")
-        print(f"  Vocab size: {vocab_size}")
-        print(f"  Embedding dim: {embedding_dim} (trainable)")
-        print(f"  Spatial Dropout: {spatial_dropout}")
-        print(f"  LSTM hidden: {lstm_hidden_size} x {lstm_num_layers} layers (bidirectional)")
-        print(f"  Conv1D: {conv_filters} filters, kernel={conv_kernel_size}")
-        print(f"  Global Pooling: Average + Max (concatenated)")
-        print(f"  Dense: {dense_hidden_size} -> {num_aspects}x{num_sentiments} = {num_aspects * num_sentiments}")
-        print(f"  Output shape: [batch, {num_aspects}, {num_sentiments}]")
-        print(f"  Total params: {sum(p.numel() for p in self.parameters()):,}")
-        print(f"  Trainable params: {sum(p.numel() for p in self.parameters() if p.requires_grad):,}")
     
-    def forward(self, input_ids, attention_mask=None):
+    def forward(self, embeddings, attention_mask):
         """
-        Forward pass through BiLSTM + CNN architecture
-        
         Args:
-            input_ids: [batch_size, seq_len] - token indices
-            attention_mask: [batch_size, seq_len] - optional, for masking padding
-        
+            embeddings: [batch, seq_len, embedding_dim] - pre-computed PhoBERT embeddings
+            attention_mask: [batch, seq_len]
         Returns:
-            logits: [batch_size, num_aspects, num_sentiments] - raw logits for CrossEntropyLoss
+            logits: [batch, num_aspects, num_sentiments]
         """
-        # 1. Get embeddings (trainable)
-        embeddings = self.embeddings(input_ids)  # [batch, seq_len, embedding_dim]
+        lstm_out, _ = self.lstm(embeddings)
         
-        # 2. Apply Spatial Dropout
-        # Reshape for Dropout2d: [batch, embedding_dim, seq_len, 1]
-        embeddings_2d = embeddings.transpose(1, 2).unsqueeze(-1)  # [batch, embedding_dim, seq_len, 1]
-        embeddings_2d = self.spatial_dropout(embeddings_2d)
-        embeddings = embeddings_2d.squeeze(-1).transpose(1, 2)  # Back to [batch, seq_len, embedding_dim]
+        attn_weights = self.attention(lstm_out).squeeze(-1)
+        attn_weights = attn_weights.masked_fill(attention_mask == 0, float('-inf'))
+        attn_weights = F.softmax(attn_weights, dim=-1).unsqueeze(-1)
+        context = (lstm_out * attn_weights).sum(dim=1)
         
-        # 3. BiLSTM
-        lstm_output, (h_n, c_n) = self.bilstm(embeddings)  # [batch, seq_len, lstm_hidden*2]
-        
-        # NEW: MultiHead Self-Attention
-        # Query, Key, Value are all lstm_output for self-attention
-        attn_out, _ = self.self_attention(lstm_output, lstm_output, lstm_output)
-        
-        # Add & Norm (Residual connection)
-        lstm_output = self.attn_layer_norm(lstm_output + attn_out)
-        
-        # 4. Conv1D (transpose for Conv1d: [batch, channels, seq_len])
-        lstm_output_t = lstm_output.transpose(1, 2)  # [batch, lstm_hidden*2, seq_len]
-        conv_output = self.conv1d(lstm_output_t)  # [batch, conv_filters, seq_len]
-        conv_output = F.relu(conv_output)
-        conv_output = conv_output.transpose(1, 2)  # Back to [batch, seq_len, conv_filters]
-        
-        # 5. Global Pooling (Average + Max)
-        pooled = self.global_pooling(conv_output)  # [batch, conv_filters*2]
-        
-        # 6. Dense layers
-        x = self.dense1(pooled)  # [batch, dense_hidden]
-        x = self.bn1(x)
-        x = F.relu(x)
-        x = self.dropout(x)
-        
-        logits = self.dense2(x)  # [batch, num_aspects * num_sentiments]
-        
-        # Reshape to [batch, num_aspects, num_sentiments]
-        logits = logits.view(-1, self.num_aspects, self.num_sentiments)
-        
-        return logits
-    
-    def predict(self, input_ids, attention_mask=None):
-        """
-        Predict sentiment for each aspect
-        
-        Args:
-            input_ids: [batch_size, seq_len]
-            attention_mask: [batch_size, seq_len] - optional
-        
-        Returns:
-            predictions: [batch_size, num_aspects] - sentiment predictions per aspect
-            probabilities: [batch_size, num_aspects, num_sentiments] - probabilities
-        """
-        logits = self.forward(input_ids, attention_mask)
-        probabilities = F.softmax(logits, dim=-1)  # Softmax over sentiments
-        predictions = torch.argmax(probabilities, dim=-1)  # [batch, num_aspects]
-        
-        return predictions, probabilities
-    
-    def predict_with_names(self, input_ids, attention_mask=None):
-        """
-        Predict with aspect and sentiment names
-        
-        Returns:
-            dict: {aspect_name: {'sentiment': str, 'confidence': float, ...}}
-        """
-        with torch.no_grad():
-            preds, probs = self.predict(input_ids, attention_mask)
-        
-        # Convert to dict (assume batch_size = 1)
-        preds = preds[0].cpu().numpy()  # [num_aspects]
-        probs = probs[0].cpu().numpy()  # [num_aspects, num_sentiments]
-        
-        results = {}
-        for i, aspect in enumerate(self.aspect_names):
-            sentiment_idx = preds[i]
-            sentiment = self.sentiment_names[sentiment_idx]
-            confidence = probs[i, sentiment_idx]
-            
-            results[aspect] = {
-                'sentiment': sentiment,
-                'confidence': float(confidence),
-                'probabilities': {
-                    'Positive': float(probs[i, 0]),
-                    'Negative': float(probs[i, 1]),
-                    'Neutral': float(probs[i, 2])
-                }
-            }
-        
-        return results
+        logits = self.classifier(context)
+        return logits.view(-1, self.num_aspects, self.num_sentiments)
 
 
 def test_model():
-    """Test BiLSTM + CNN model (no pretrained embeddings)"""
-    print("=" * 80)
-    print("Testing BiLSTM + CNN Multi-Label Sentiment Classification Model")
-    print("=" * 80)
+    model = BiLSTM_SC(embedding_dim=768, num_aspects=11, num_sentiments=3)
+    print(f"BiLSTM_SC params: {sum(p.numel() for p in model.parameters()):,}")
     
-    # Create model
-    model = BiLSTM_SentimentClassification(
-        vocab_size=30000,
-        embedding_dim=300,
-        num_aspects=11,
-        num_sentiments=3,
-        lstm_hidden_size=256,
-        lstm_num_layers=2,
-        spatial_dropout=0.2,
-        conv_filters=128,
-        conv_kernel_size=3
-    )
+    x = torch.randn(4, 256, 768)
+    mask = torch.ones(4, 256)
     
-    # Test forward pass
-    batch_size = 4
-    seq_len = 128
+    model.eval()
+    with torch.no_grad():
+        out = model(x, mask)
     
-    input_ids = torch.randint(1, 30000, (batch_size, seq_len))
-    attention_mask = torch.ones(batch_size, seq_len)
-    
-    print(f"\nTest Input:")
-    print(f"  input_ids: {input_ids.shape}")
-    print(f"  attention_mask: {attention_mask.shape}")
-    
-    # Forward pass
-    logits = model(input_ids, attention_mask)
-    print(f"\nOutput:")
-    print(f"  logits: {logits.shape}")
-    print(f"  logits range: [{logits.min():.3f}, {logits.max():.3f}]")
-    
-    # Predictions
-    predictions, probabilities = model.predict(input_ids, attention_mask)
-    print(f"\nPredictions:")
-    print(f"  predictions: {predictions.shape}  # [batch, num_aspects]")
-    print(f"  probabilities: {probabilities.shape}  # [batch, num_aspects, num_sentiments]")
-    print(f"  predictions[0]: {predictions[0]}")
-    
-    # Test predict_with_names
-    print(f"\nDetailed predictions (first sample):")
-    results = model.predict_with_names(input_ids, attention_mask)
-    for aspect, data in list(results.items())[:5]:  # Show first 5
-        sentiment = data['sentiment']
-        confidence = data['confidence']
-        print(f"  {aspect:<15} {sentiment:<10} (conf: {confidence:.3f})")
-    
-    print("\n[OK] BiLSTM + CNN Multi-Label Sentiment model test passed!")
-    print("=" * 80)
+    assert out.shape == (4, 11, 3), f"Shape mismatch: {out.shape}"
+    print(f"Output shape: {out.shape} ✅")
 
 
 if __name__ == '__main__':

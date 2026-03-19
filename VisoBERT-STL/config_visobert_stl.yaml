@@ -69,7 +69,7 @@ training:
   dataloader_persistent_workers: true
 
 reproducibility:
-  training_seed: 42 # Seed for PyTorch/Transformers training
+  training_seed: 100 # Seed for PyTorch/Transformers training
 
 # Sequential training settings
 two_stage:

@@ -1,12 +1,9 @@
 # BiLSTM Multi-Task Learning Configuration
 # ========================================================================
-# Multi-task approach: Train AD and SC simultaneously with shared backbone
+# Uses PhoBERT as frozen feature extractor (NOT static embedding table)
+# BiLSTM receives pre-computed contextualized embeddings (last_hidden_state)
 #
-# Model: BiLSTM + CNN with 2 task-specific heads
-#   - Shared: Embedding → BiLSTM → Conv1D → Pooling → Dense
-#   - Head 1: AD (binary classification, 11 outputs)
-#   - Head 2: SC (multi-class, 11 × 3 outputs)
-#
+# Model: PhoBERT → BiLSTM → Additive Attention → Shared Dense → 2 Heads
 # Loss: Combined loss = α * Loss_AD + β * Loss_SC
 # ========================================================================
 
@@ -19,38 +16,16 @@ paths:
   final_results_dir: "BILSTM-MTL/results"
 
 model:
-  # Tokenizer
-  tokenizer_name: "vinai/phobert-base-v2"
+  # PhoBERT feature extractor
+  embedding_model: "vinai/phobert-base-v2"
 
-  # Pretrained PhoBERT embeddings
-  use_phobert_embeddings: true
-  freeze_embeddings: true
-
-  # Attention mechanism
-  use_attention: true
-  attention_heads: 8
-  attention_dropout: 0.1
-
-  # Architecture
-  vocab_size: 64000
-  embedding_dim: 768 # Match PhoBERT
-  padding_idx: 1
-
-  # Shared BiLSTM backbone
+  # Architecture (matches old notebook that achieved SC=95%)
+  embedding_dim: 768 # PhoBERT output dimension
   lstm_hidden_size: 256
   lstm_num_layers: 2
   lstm_dropout: 0.3
-
-  # Spatial Dropout
-  spatial_dropout: 0.2
-
-  # Conv1D
-  conv_filters: 128
-  conv_kernel_size: 3
-
-  # Shared dense
-  dense_hidden_size: 256
-  dense_dropout: 0.3
+  classifier_dropout: 0.3
+  bidirectional: true
 
   # Task settings
   num_aspects: 11
@@ -76,13 +51,12 @@ sentiment_labels:
   neutral: 2
 
 training:
-  # Batch sizes
-  per_device_train_batch_size: 32
-  per_device_eval_batch_size: 64
-  gradient_accumulation_steps: 2
+  # Batch sizes (matched to old notebook)
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 32
 
   # Optimizer
-  learning_rate: 1.0e-3 # Optimized LR for BiLSTM with Attention
+  learning_rate: 1.0e-3
   weight_decay: 0.01
   max_grad_norm: 1.0
 
@@ -90,63 +64,36 @@ training:
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.1
 
-  # Training duration
-  num_train_epochs: 30
+  # Training duration (matched to old notebook = 20 epochs)
+  num_train_epochs: 20
 
   # Mixed precision
   fp16: true
 
-  # DataLoader
-  dataloader_num_workers: 2
-  dataloader_pin_memory: true
-
-  # Evaluation
-  evaluation_strategy: "epoch"
-  save_strategy: "epoch"
-  save_total_limit: 3
-
-  # Early stopping
-  early_stopping_patience: 10
+  # Early stopping (matched to old notebook = patience 5)
+  early_stopping_patience: 5
   early_stopping_threshold: 0.001
 
   # Logging
   logging_steps: 50
 
-  # Device
-  device: "cuda"
-
 # Multi-task learning settings
 multi_task:
-  # Loss weights (combined loss = alpha * L_AD + beta * L_SC)
-  loss_weight_ad: 1.0 # Weight for AD loss
-  loss_weight_sc: 1.0 # Weight for SC loss
-
-  # SC Masking: Only calculate SC loss for aspects present in AD labels
+  loss_weight_ad: 1.0
+  loss_weight_sc: 1.0
   sc_loss_masking: true
 
-  # Loss Settings
-  use_focal_loss: true
-  focal_gamma: 2.0
-
-  # AD task settings
   aspect_detection:
-    use_pos_weight: true # Use pos_weight for BCE loss
-    pos_weight_auto: true # Auto-calculate from data
-    metric: "f1_macro" # Metric for evaluation (standard in ABSA research)
+    metric: "f1_macro"
 
-  # SC task settings
   sentiment_classification:
-    use_class_weight: true # Use class weights for CE loss
-    class_weight_auto: true # Auto-calculate from data
-    metric: "f1_macro" # Changed to F1 Macro for consistency with ABSA standards
+    metric: "f1_macro"
 
-  # Best model selection
-  # Options: "ad_f1_macro", "sc_f1_macro", "combined" (average of both)
   best_model_metric: "combined"
 
-# Reproducibility
+# Reproducibility (matched to Transformer models = seed 100)
 reproducibility:
-  seed: 42
+  seed: 100
   deterministic: true
 
 general:
