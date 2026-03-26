@@ -21,7 +21,7 @@ model:
   embedding_dim: 768
   lstm_hidden_size: 256
   lstm_num_layers: 2
-  lstm_dropout: 0.3
+  lstm_dropout: 0.2
   bidirectional: true
 
   # Task settings
@@ -50,7 +50,7 @@ sentiment_labels:
 training:
   per_device_train_batch_size: 16
   per_device_eval_batch_size: 32
-  learning_rate: 1.0e-3
+  learning_rate: 5.0e-4
   weight_decay: 0.01
   max_grad_norm: 1.0
   lr_scheduler_type: "cosine"
@@ -74,8 +74,11 @@ two_stage:
     metric_for_best_model: "f1_macro"
     early_stopping_patience: 5
 
-  # Stage 2: Sentiment Classification (matched to old notebook = 20 epochs, patience 5)
+  # Stage 2: Sentiment Classification
   sentiment_classification:
-    epochs: 20
+    epochs: 25
     metric_for_best_model: "f1_macro"
     early_stopping_patience: 5
+    use_focal_loss: true
+    focal_gamma: 2
+    focal_alpha: "auto"

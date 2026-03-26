@@ -23,8 +23,8 @@ model:
   embedding_dim: 768 # PhoBERT output dimension
   lstm_hidden_size: 256
   lstm_num_layers: 2
-  lstm_dropout: 0.3
-  classifier_dropout: 0.3
+  lstm_dropout: 0.2
+  classifier_dropout: 0.2
   bidirectional: true
 
   # Task settings
@@ -56,7 +56,7 @@ training:
   per_device_eval_batch_size: 32
 
   # Optimizer
-  learning_rate: 1.0e-3
+  learning_rate: 5.0e-4
   weight_decay: 0.01
   max_grad_norm: 1.0
 
@@ -64,8 +64,8 @@ training:
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.1
 
-  # Training duration (matched to old notebook = 20 epochs)
-  num_train_epochs: 20
+  # Training duration
+  num_train_epochs: 25
 
   # Mixed precision
   fp16: true
@@ -87,6 +87,9 @@ multi_task:
     metric: "f1_macro"
 
   sentiment_classification:
+    use_focal_loss: true
+    focal_gamma: 2
+    focal_alpha: "auto"
     metric: "f1_macro"
 
   best_model_metric: "combined"

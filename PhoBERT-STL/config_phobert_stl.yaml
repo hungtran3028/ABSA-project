@@ -37,7 +37,7 @@ model:
 
   # Model architecture
   hidden_size: 512 # Dense layer
-  dropout: 0.3
+  dropout: 0.2
 
 valid_aspects:
   - Battery

@@ -30,6 +30,7 @@ from model_bilstm_ad import BiLSTM_AD
 from dataset_bilstm_ad import ADEmbeddingDataset
 from model_bilstm_sc import BiLSTM_SC
 from dataset_bilstm_sc import SCEmbeddingDataset
+from focal_loss_multilabel import MultilabelFocalLoss, calculate_global_alpha
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
@@ -227,7 +228,7 @@ def train_aspect_detection(config, embedding_model, tokenizer, device):
 # STAGE 2: SENTIMENT CLASSIFICATION
 # =============================================================================
 
-def train_epoch_sc(model, dataloader, optimizer, scheduler, device, criterion, scaler):
+def train_epoch_sc(model, dataloader, optimizer, scheduler, device, sc_focal_loss, scaler):
     model.train()
     total_loss = 0
     for batch in tqdm(dataloader, desc="[SC] Training"):
@@ -239,9 +240,8 @@ def train_epoch_sc(model, dataloader, optimizer, scheduler, device, criterion, s
         optimizer.zero_grad()
         with torch.cuda.amp.autocast(enabled=(scaler is not None)):
             sc_logits = model(embeddings, attention_mask)
-            bsz, num_aspects, num_classes = sc_logits.shape
-            ce = criterion(sc_logits.view(bsz * num_aspects, num_classes), sc_labels.view(bsz * num_aspects))
-            sc_loss_per_aspect = ce.view(bsz, num_aspects)
+            # Focal loss with masking
+            sc_loss_per_aspect = sc_focal_loss(sc_logits, sc_labels)  # [bsz, num_aspects]
             masked = sc_loss_per_aspect * sc_mask
             num_labeled = sc_mask.sum()
             loss = masked.sum() / num_labeled if num_labeled > 0 else masked.sum()
@@ -344,9 +344,27 @@ def train_sentiment_classification(config, embedding_model, tokenizer, device):
     
     print(f"BiLSTM_SC params: {sum(p.numel() for p in model.parameters()):,}")
     
-    criterion = torch.nn.CrossEntropyLoss(reduction='none')
+    # SC Focal Loss (standardized across all models)
     sc_config = config['two_stage']['sentiment_classification']
-    num_epochs = sc_config.get('epochs', 20)
+    focal_gamma = sc_config.get('focal_gamma', 2)
+    focal_alpha_setting = sc_config.get('focal_alpha', 'auto')
+    
+    if focal_alpha_setting == 'auto':
+        aspect_cols = config['aspect_names']
+        sentiment_to_idx = config['sentiment_labels']
+        focal_alpha = calculate_global_alpha(
+            config['paths']['train_file'], aspect_cols, sentiment_to_idx
+        )
+    else:
+        focal_alpha = focal_alpha_setting
+    
+    sc_focal_loss = MultilabelFocalLoss(
+        alpha=focal_alpha, gamma=focal_gamma,
+        num_aspects=config['model']['num_aspects'], reduction='none'
+    ).to(device)
+    print(f"   SC Loss: MultilabelFocalLoss(gamma={focal_gamma}, alpha={focal_alpha})")
+    
+    num_epochs = sc_config.get('epochs', 25)
     learning_rate = config['training']['learning_rate']
     optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=config['training']['weight_decay'])
     total_steps = len(train_loader) * num_epochs
@@ -362,7 +380,7 @@ def train_sentiment_classification(config, embedding_model, tokenizer, device):
     for epoch in range(1, num_epochs + 1):
         print(f"\n[SC] Epoch {epoch}/{num_epochs}")
         
-        train_loss = train_epoch_sc(model, train_loader, optimizer, scheduler, device, criterion, scaler)
+        train_loss = train_epoch_sc(model, train_loader, optimizer, scheduler, device, sc_focal_loss, scaler)
         val_metrics = evaluate_sc(model, val_loader, device, aspects)
         val_f1 = val_metrics['overall_f1']
         

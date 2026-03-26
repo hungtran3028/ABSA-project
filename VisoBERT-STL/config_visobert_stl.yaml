@@ -42,7 +42,7 @@ model:
 
   # Model architecture
   hidden_size: 512 # Dense layer
-  dropout: 0.3 # Standard dropout
+  dropout: 0.2 # Standard dropout
 
 sentiment_labels:
   positive: 0

@@ -29,6 +29,7 @@ import wandb
 
 from model_bilstm_mtl import BiLSTM_MTL
 from dataset_bilstm_mtl import MTLEmbeddingDataset
+from focal_loss_multilabel import MultilabelFocalLoss, calculate_global_alpha
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
@@ -58,7 +59,7 @@ def setup_logging(output_dir: str) -> str:
 
 
 def train_epoch_mtl(model, dataloader, optimizer, scheduler, device, 
-                    ad_criterion, loss_weight_ad, loss_weight_sc, scaler):
+                    ad_criterion, sc_focal_loss, loss_weight_ad, loss_weight_sc, scaler):
     """Train one epoch with multi-task learning"""
     model.train()
     total_loss = 0
@@ -80,14 +81,8 @@ def train_epoch_mtl(model, dataloader, optimizer, scheduler, device,
             # AD loss
             ad_loss = ad_criterion(ad_logits, ad_labels)
             
-            # SC loss (masked cross-entropy)
-            bsz, num_aspects, num_classes = sc_logits.shape
-            sc_ce = F.cross_entropy(
-                sc_logits.view(bsz * num_aspects, num_classes),
-                sc_labels.view(bsz * num_aspects),
-                reduction='none'
-            )
-            sc_loss_per_aspect = sc_ce.view(bsz, num_aspects)
+            # SC loss (masked focal loss)
+            sc_loss_per_aspect = sc_focal_loss(sc_logits, sc_labels)  # [bsz, num_aspects]
             sc_masked_loss = sc_loss_per_aspect * sc_mask
             num_labeled = sc_mask.sum()
             sc_loss = sc_masked_loss.sum() / num_labeled if num_labeled > 0 else sc_masked_loss.sum()
@@ -360,6 +355,26 @@ def main(args: argparse.Namespace):
     loss_weight_sc = mtl_config['loss_weight_sc']
     print(f"   Loss weights: AD={loss_weight_ad}, SC={loss_weight_sc}")
     
+    # SC Focal Loss (standardized across all models)
+    sc_config = mtl_config.get('sentiment_classification', {})
+    focal_gamma = sc_config.get('focal_gamma', 2)
+    focal_alpha_setting = sc_config.get('focal_alpha', 'auto')
+    
+    if focal_alpha_setting == 'auto':
+        aspect_cols = config['aspect_names']
+        sentiment_to_idx = config['sentiment_labels']
+        focal_alpha = calculate_global_alpha(
+            config['paths']['train_file'], aspect_cols, sentiment_to_idx
+        )
+    else:
+        focal_alpha = focal_alpha_setting
+    
+    sc_focal_loss = MultilabelFocalLoss(
+        alpha=focal_alpha, gamma=focal_gamma, 
+        num_aspects=config['model']['num_aspects'], reduction='none'
+    ).to(device)
+    print(f"   SC Loss: MultilabelFocalLoss(gamma={focal_gamma}, alpha={focal_alpha})")
+    
     # Optimizer & Scheduler
     num_epochs = config['training']['num_train_epochs']
     learning_rate = config['training']['learning_rate']
@@ -383,7 +398,7 @@ def main(args: argparse.Namespace):
         
         train_loss, train_ad_loss, train_sc_loss = train_epoch_mtl(
             model, train_loader, optimizer, scheduler, device,
-            ad_criterion, loss_weight_ad, loss_weight_sc, scaler
+            ad_criterion, sc_focal_loss, loss_weight_ad, loss_weight_sc, scaler
         )
         print(f"Train Loss: {train_loss:.4f} (AD: {train_ad_loss:.4f}, SC: {train_sc_loss:.4f})")
         

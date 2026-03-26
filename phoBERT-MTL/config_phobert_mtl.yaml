@@ -29,7 +29,7 @@ model:
 
   # Task heads
   hidden_size: 512
-  dropout: 0.3
+  dropout: 0.2
 
   # Task settings
   num_aspects: 11
@@ -67,7 +67,7 @@ training:
 
   # Scheduler
   lr_scheduler_type: "cosine"
-  warmup_ratio: 0.06
+  warmup_ratio: 0.10
 
   # Training duration
   num_train_epochs: 15

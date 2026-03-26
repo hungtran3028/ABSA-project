@@ -29,7 +29,7 @@ model:
 
   # Task heads
   hidden_size: 512
-  dropout: 0.3
+  dropout: 0.2
 
   # Task settings
   num_aspects: 11
@@ -58,7 +58,7 @@ training:
   # Batch sizes (matching STL config)
   per_device_train_batch_size: 16
   per_device_eval_batch_size: 32
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 4
 
   # Optimizer
   learning_rate: 2.0e-5 # Lower for pretrained model
@@ -67,10 +67,10 @@ training:
 
   # Scheduler
   lr_scheduler_type: "cosine"
-  warmup_ratio: 0.06
+  warmup_ratio: 0.10
 
   # Training duration
-  num_train_epochs: 12
+  num_train_epochs: 15
 
   # Mixed precision
   fp16: true
