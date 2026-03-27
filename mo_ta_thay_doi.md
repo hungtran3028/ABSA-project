@@ -50,6 +50,7 @@ Sửa đổi 4 training scripts và 4 analysis scripts để bổ sung:
 | 2 | McNemar tìm sai path | Script cũ tìm `results/**/predictions_detailed_ad.csv` | Rewrite với paths đúng cho cả MTL/STL |
 | 3 | BiLSTM-STL không lưu gì | Không có code save predictions cho AD lẫn SC | Thêm inline prediction saving cho cả 2 stages |
 | 4 | STL thiếu exact-match | CSV có per-aspect nhưng thiếu cột tổng hợp | McNemar script tự compute từ per-aspect columns |
+| 5 | W&B run bị trùng tên | Hardcoded `name` trong `wandb.init()` | Thêm dynamic timestamp vào tên run trên cả 6 scripts |
 
 ---
 
