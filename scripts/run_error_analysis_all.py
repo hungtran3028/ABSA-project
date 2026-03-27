@@ -1,248 +1,205 @@
 """
-Error Analysis for ALL 6 ABSA Models
-=====================================
-Generates confusion matrices, per-aspect F1, and top misclassified samples
-for each model to support Chapter 4 (Results & Discussion) of the thesis.
+Error Analysis for ABSA Models
+===============================
+Analyzes prediction errors across all 6 models.
+- Top-20 misclassified samples per model
+- Error pattern analysis (which aspects are hardest)
+- Cross-model error agreement
+
+Usage:
+    python scripts/run_error_analysis_all.py --results_dir results/ABSA-results
 """
 
+import os
+import json
+import argparse
 import pandas as pd
 import numpy as np
-from sklearn.metrics import confusion_matrix, classification_report
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import seaborn as sns
-import json
-import os
-import glob
-
-SENTIMENT_MAP = {0: 'Positive', 1: 'Negative', 2: 'Neutral'}
-ASPECTS = ['Battery', 'Camera', 'Design', 'Display', 'General',
-           'Packaging', 'Performance', 'Price', 'Shipping', 'Shop_Service']
+from collections import Counter
 
 
-def find_test_results(model_dir):
-    """Find test_results.json in model directory."""
-    patterns = [
-        f"{model_dir}/models/mtl/test_results.json",
-        f"{model_dir}/models/sentiment_classification/test_results.json",
-        f"{model_dir}/models/aspect_detection/test_results.json",
-        f"{model_dir}/results/two_stage_training/test_results.json",
-        f"{model_dir}/results/test_results.json",
-    ]
-    for p in patterns:
-        if os.path.exists(p):
-            return p
-    # Glob fallback
-    files = glob.glob(f"{model_dir}/**/test_results*.json", recursive=True)
-    return files[0] if files else None
+ASPECT_NAMES = [
+    'Battery', 'Camera', 'Performance', 'Display', 'Design',
+    'Packaging', 'Price', 'Shop_Service', 'Shipping', 'General', 'Others'
+]
+
+MODELS = {
+    'ViSoBERT-MTL': 'ViSoBERT-MTL/test_predictions_detailed.csv',
+    'PhoBERT-MTL': 'PhoBERT-MTL/test_predictions_detailed.csv',
+    'BiLSTM-MTL': 'BiLSTM-MTL/test_predictions_detailed.csv',
+    'ViSoBERT-STL': 'ViSoBERT-STL/sentiment_classification/test_predictions_detailed.csv',
+    'PhoBERT-STL': 'PhoBERT-STL/sentiment_classification/test_predictions_detailed.csv',
+    'BiLSTM-STL': 'BiLSTM-STL/sentiment_classification/test_predictions_detailed.csv',
+}
 
 
-def find_predictions(model_dir):
-    """Find detailed predictions CSV."""
-    files = glob.glob(f"{model_dir}/**/test_predictions_detailed*.csv", recursive=True)
-    if not files:
-        files = glob.glob(f"{model_dir}/**/predictions*.csv", recursive=True)
-    return files[0] if files else None
-
-
-def find_training_history(model_dir):
-    """Find training_history.csv."""
-    files = glob.glob(f"{model_dir}/**/training_history.csv", recursive=True)
-    return files[0] if files else None
-
-
-def plot_training_curves(history_path, model_name, output_dir):
-    """Plot loss and metric curves from training history."""
-    if not history_path or not os.path.exists(history_path):
-        print(f"  ⚠️ No training history found for {model_name}")
-        return
+def analyze_mtl_errors(df, model_name):
+    """Analyze errors for MTL model format."""
+    results = {'model': model_name, 'type': 'mtl'}
     
-    df = pd.read_csv(history_path)
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    fig.suptitle(f'{model_name} - Training Curves', fontsize=14, fontweight='bold')
+    # AD errors per aspect
+    ad_errors = {}
+    for aspect in ASPECT_NAMES:
+        pred_col = f'{aspect}_ad_pred'
+        true_col = f'{aspect}_ad_true'
+        if pred_col in df.columns and true_col in df.columns:
+            errors = (df[pred_col] != df[true_col]).sum()
+            total = len(df)
+            ad_errors[aspect] = {'errors': int(errors), 'total': total, 'error_rate': errors/total}
+    results['ad_errors_per_aspect'] = ad_errors
     
-    # Loss curve
-    loss_cols = [c for c in df.columns if 'loss' in c.lower()]
-    for col in loss_cols:
-        axes[0].plot(df[col], label=col)
-    axes[0].set_xlabel('Epoch')
-    axes[0].set_ylabel('Loss')
-    axes[0].set_title('Loss Curves')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
+    # SC errors per aspect (only where aspect is present)
+    sc_errors = {}
+    for aspect in ASPECT_NAMES:
+        correct_col = f'{aspect}_sc_correct'
+        true_col = f'{aspect}_ad_true'
+        if correct_col in df.columns and true_col in df.columns:
+            mask = df[true_col] == 1
+            aspect_df = df[mask]
+            if len(aspect_df) > 0:
+                valid = aspect_df[correct_col].apply(lambda x: x != '' and not pd.isna(x))
+                errors = aspect_df[valid][correct_col].apply(lambda x: float(x) == 0).sum()
+                sc_errors[aspect] = {'errors': int(errors), 'total': int(valid.sum()),
+                                    'error_rate': errors/valid.sum() if valid.sum() > 0 else 0}
+    results['sc_errors_per_aspect'] = sc_errors
     
-    # Metric curves (F1/Accuracy)
-    metric_cols = [c for c in df.columns if 'f1' in c.lower() or 'acc' in c.lower()]
-    for col in metric_cols:
-        axes[1].plot(df[col], label=col)
-    axes[1].set_xlabel('Epoch')
-    axes[1].set_ylabel('Score')
-    axes[1].set_title('Metric Curves')
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
+    # Top misclassified samples (by number of wrong aspects)
+    if 'ad_exact_match' in df.columns:
+        wrong_samples = df[df['ad_exact_match'] == 0].copy()
+        # Count wrong aspects per sample
+        wrong_counts = []
+        for _, row in wrong_samples.iterrows():
+            n_wrong = sum(1 for a in ASPECT_NAMES
+                         if f'{a}_ad_correct' in df.columns and row.get(f'{a}_ad_correct', 1) == 0)
+            wrong_counts.append(n_wrong)
+        wrong_samples = wrong_samples.copy()
+        wrong_samples['n_wrong_aspects'] = wrong_counts
+        top20 = wrong_samples.nlargest(20, 'n_wrong_aspects')
+        results['top20_ad_errors'] = top20[['sample_id', 'n_wrong_aspects']].to_dict('records')
     
-    plt.tight_layout()
-    save_path = os.path.join(output_dir, f'{model_name}_training_curves.png')
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    print(f"  📈 Training curves saved: {save_path}")
+    return results
 
 
-def analyze_model(model_name, model_dir, output_dir):
-    """Run error analysis for a single model."""
-    print(f"\n{'='*60}")
-    print(f"📊 Error Analysis: {model_name}")
-    print(f"{'='*60}")
+def analyze_stl_errors(df, model_name):
+    """Analyze errors for STL model format."""
+    results = {'model': model_name, 'type': 'stl'}
     
-    model_output = os.path.join(output_dir, model_name)
-    os.makedirs(model_output, exist_ok=True)
+    # Detect column format
+    pred_cols = [c for c in df.columns if c.endswith('_pred')]
+    correct_cols = [c for c in df.columns if c.endswith('_correct')]
     
-    # 1. Load test results
-    results_path = find_test_results(model_dir)
-    if results_path:
-        with open(results_path) as f:
-            results = json.load(f)
-        print(f"  ✅ Test results loaded: {results_path}")
+    errors_per_aspect = {}
+    for col in pred_cols:
+        aspect = col.replace('_pred', '')
+        true_col = f'{aspect}_true'
+        correct_col = f'{aspect}_correct'
         
-        # Save formatted results
-        with open(os.path.join(model_output, 'test_results_formatted.txt'), 'w') as f:
-            f.write(f"Model: {model_name}\n")
-            f.write(f"{'='*40}\n")
-            f.write(json.dumps(results, indent=2, ensure_ascii=False))
-    else:
-        print(f"  ❌ No test results found for {model_name}")
+        if true_col in df.columns:
+            valid = df[true_col].notna() & (df[true_col] != '')
+            valid_df = df[valid]
+            if len(valid_df) > 0:
+                if correct_col in df.columns:
+                    valid_correct = valid_df[correct_col].apply(
+                        lambda x: x != '' and not pd.isna(x))
+                    errors = valid_df[valid_correct][correct_col].apply(
+                        lambda x: float(x) == 0).sum()
+                else:
+                    errors = (valid_df[col].astype(float) != valid_df[true_col].astype(float)).sum()
+                errors_per_aspect[aspect] = {
+                    'errors': int(errors),
+                    'total': int(len(valid_df)),
+                    'error_rate': errors / len(valid_df) if len(valid_df) > 0 else 0
+                }
     
-    # 2. Training curves
-    history_path = find_training_history(model_dir)
-    plot_training_curves(history_path, model_name, model_output)
-    
-    # 3. Look for existing confusion matrix images
-    cm_files = glob.glob(f"{model_dir}/**/confusion_matrix*.png", recursive=True)
-    if cm_files:
-        print(f"  ✅ Found {len(cm_files)} confusion matrix image(s)")
-        for cm in cm_files:
-            print(f"     → {cm}")
-    else:
-        print(f"  ⚠️ No confusion matrix images found")
-    
-    # 4. Analyze predictions if available
-    pred_path = find_predictions(model_dir)
-    if pred_path:
-        print(f"  ✅ Predictions loaded: {pred_path}")
-        df_pred = pd.read_csv(pred_path)
-        
-        # Count correct vs incorrect
-        if 'is_correct' in df_pred.columns:
-            correct = df_pred['is_correct'].sum()
-            total = len(df_pred)
-            print(f"  📊 Correct: {correct}/{total} ({correct/total*100:.2f}%)")
-            
-            # Save top errors
-            errors = df_pred[df_pred['is_correct'] == False].head(20)
-            if len(errors) > 0:
-                errors.to_csv(os.path.join(model_output, 'top_errors.csv'), index=False)
-                print(f"  💾 Top {len(errors)} errors saved to top_errors.csv")
-    else:
-        print(f"  ⚠️ No detailed predictions found")
-    
-    print(f"  📁 Analysis output: {model_output}")
-
-
-def generate_comparison_chart(output_dir):
-    """Generate a bar chart comparing all 6 models side by side."""
-    models = {
-        'ViSoBERT-MTL': 'VisoBERT-MTL',
-        'ViSoBERT-STL': 'VisoBERT-STL',
-        'PhoBERT-MTL':  'phoBERT-MTL',
-        'PhoBERT-STL':  'PhoBERT-STL',
-        'BiLSTM-MTL':   'BILSTM-MTL',
-        'BiLSTM-STL':   'BILSTM-STL',
-    }
-    
-    data = []
-    for display_name, dir_name in models.items():
-        results_path = find_test_results(dir_name)
-        if results_path:
-            with open(results_path) as f:
-                r = json.load(f)
-            
-            if "ad" in r and isinstance(r["ad"], dict):
-                ad_f1 = r["ad"].get("test_f1", r["ad"].get("overall_f1", 0)) * 100
-                sc_f1 = r["sc"].get("test_f1", r["sc"].get("overall_f1", 0)) * 100
-            else:
-                ad_f1 = r.get("test_f1", r.get("f1", 0)) * 100
-                sc_f1 = ad_f1  # Single task
-            
-            data.append({"Model": display_name, "AD F1": ad_f1, "SC F1": sc_f1})
-    
-    if not data:
-        print("⚠️ No model results found for comparison chart")
-        return
-    
-    df = pd.DataFrame(data)
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    x = np.arange(len(df))
-    width = 0.35
-    
-    bars_ad = ax.bar(x - width/2, df['AD F1'], width, label='AD F1-Score', color='#2196F3', alpha=0.85)
-    bars_sc = ax.bar(x + width/2, df['SC F1'], width, label='SC F1-Score', color='#FF9800', alpha=0.85)
-    
-    ax.set_xlabel('Model', fontsize=12)
-    ax.set_ylabel('F1-Score (%)', fontsize=12)
-    ax.set_title('So sánh F1-Score giữa 6 mô hình ABSA', fontsize=14, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels(df['Model'], rotation=15, ha='right')
-    ax.legend(fontsize=11)
-    ax.grid(axis='y', alpha=0.3)
-    ax.set_ylim(0, 100)
-    
-    # Add value labels
-    for bar in bars_ad:
-        ax.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 1,
-                f'{bar.get_height():.1f}', ha='center', va='bottom', fontsize=9)
-    for bar in bars_sc:
-        ax.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 1,
-                f'{bar.get_height():.1f}', ha='center', va='bottom', fontsize=9)
-    
-    plt.tight_layout()
-    save_path = os.path.join(output_dir, 'model_comparison_f1.png')
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    print(f"\n📊 Comparison chart saved: {save_path}")
+    results['errors_per_aspect'] = errors_per_aspect
+    return results
 
 
 def main():
-    output_dir = "error_analysis_results"
+    parser = argparse.ArgumentParser(description='Error Analysis for ABSA models')
+    parser.add_argument('--results_dir', type=str, required=True)
+    parser.add_argument('--output_dir', type=str, default=None)
+    args = parser.parse_args()
+    
+    results_dir = args.results_dir
+    output_dir = args.output_dir or os.path.join(results_dir, 'error_analysis_results')
     os.makedirs(output_dir, exist_ok=True)
     
-    print("=" * 70)
-    print("🔍 COMPREHENSIVE ERROR ANALYSIS - ALL 6 ABSA MODELS")
-    print("=" * 70)
+    print("=" * 80)
+    print("Error Analysis for ABSA Models")
+    print("=" * 80)
     
-    models = {
-        'ViSoBERT-MTL': 'VisoBERT-MTL',
-        'ViSoBERT-STL': 'VisoBERT-STL',
-        'PhoBERT-MTL':  'phoBERT-MTL',
-        'PhoBERT-STL':  'PhoBERT-STL',
-        'BiLSTM-MTL':   'BILSTM-MTL',
-        'BiLSTM-STL':   'BILSTM-STL',
-    }
+    all_results = []
     
-    for display_name, dir_name in models.items():
-        if os.path.exists(dir_name):
-            analyze_model(display_name, dir_name, output_dir)
+    for model_name, pred_path in MODELS.items():
+        fpath = os.path.join(results_dir, pred_path)
+        if not os.path.exists(fpath):
+            print(f"  SKIP {model_name}: {fpath} not found")
+            continue
+        
+        print(f"\n--- {model_name} ---")
+        df = pd.read_csv(fpath)
+        print(f"  Loaded {len(df)} samples")
+        
+        if 'ad_exact_match' in df.columns:
+            result = analyze_mtl_errors(df, model_name)
         else:
-            print(f"\n⚠️ Directory not found: {dir_name} — skipping {display_name}")
+            result = analyze_stl_errors(df, model_name)
+        
+        all_results.append(result)
+        
+        # Print summary
+        if 'ad_errors_per_aspect' in result:
+            top3 = sorted(result['ad_errors_per_aspect'].items(),
+                         key=lambda x: x[1]['error_rate'], reverse=True)[:3]
+            parts = [f"{a}({v['error_rate']*100:.1f}%)" for a, v in top3]
+            print(f"  Hardest AD aspects: {', '.join(parts)}")
+        if 'sc_errors_per_aspect' in result:
+            top3 = sorted(result['sc_errors_per_aspect'].items(),
+                         key=lambda x: x[1]['error_rate'], reverse=True)[:3]
+            parts = [f"{a}({v['error_rate']*100:.1f}%)" for a, v in top3]
+            print(f"  Hardest SC aspects: {', '.join(parts)}")
+        if 'errors_per_aspect' in result:
+            top3 = sorted(result['errors_per_aspect'].items(),
+                         key=lambda x: x[1]['error_rate'], reverse=True)[:3]
+            parts = [f"{a}({v['error_rate']*100:.1f}%)" for a, v in top3]
+            print(f"  Hardest aspects: {', '.join(parts)}")
     
-    # Generate comparison chart
-    generate_comparison_chart(output_dir)
+    # Save results
+    json_path = os.path.join(output_dir, 'error_analysis_detailed.json')
+    with open(json_path, 'w') as f:
+        json.dump(all_results, f, indent=2, default=str)
+    print(f"\nSaved: {json_path}")
     
-    print(f"\n{'='*70}")
-    print(f"✅ Error analysis complete! All results saved to: {output_dir}/")
-    print(f"{'='*70}")
+    # Generate text report
+    txt_path = os.path.join(output_dir, 'error_analysis_report.txt')
+    with open(txt_path, 'w', encoding='utf-8') as f:
+        f.write("Error Analysis Report\n")
+        f.write("=" * 80 + "\n\n")
+        
+        for result in all_results:
+            f.write(f"Model: {result['model']} ({result['type'].upper()})\n")
+            f.write("-" * 40 + "\n")
+            
+            for task_key in ['ad_errors_per_aspect', 'sc_errors_per_aspect', 'errors_per_aspect']:
+                if task_key in result:
+                    task_label = task_key.replace('_per_aspect', '').replace('_errors', ' errors').upper()
+                    f.write(f"\n  {task_label}:\n")
+                    sorted_aspects = sorted(result[task_key].items(),
+                                           key=lambda x: x[1]['error_rate'], reverse=True)
+                    for aspect, vals in sorted_aspects:
+                        f.write(f"    {aspect:<15} {vals['errors']:>4}/{vals['total']:<4} "
+                               f"(error rate: {vals['error_rate']*100:.1f}%)\n")
+            
+            if 'top20_ad_errors' in result:
+                f.write(f"\n  Top-20 AD error samples:\n")
+                for item in result['top20_ad_errors']:
+                    f.write(f"    Sample {item['sample_id']}: {item['n_wrong_aspects']} wrong aspects\n")
+            
+            f.write("\n")
+    
+    print(f"Saved: {txt_path}")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

@@ -308,6 +308,52 @@ def save_confusion_matrices(metrics: dict, aspect_names: list, output_dir: str):
     print(f"   Saved: {output_dir}/confusion_matrix_sc_per_aspect.png")
 
 
+def save_mtl_predictions(metrics: dict, aspect_names: list, output_dir: str):
+    """Save per-sample predictions for McNemar's test and error analysis."""
+    ad_preds = metrics['ad']['predictions']
+    ad_labels = metrics['ad']['labels']
+    sc_preds = metrics['sc']['predictions']
+    sc_labels = metrics['sc']['labels']
+
+    if isinstance(sc_preds, torch.Tensor):
+        sc_preds = sc_preds.numpy()
+    if isinstance(sc_labels, torch.Tensor):
+        sc_labels = sc_labels.numpy()
+
+    n_samples = ad_preds.shape[0]
+    rows = []
+    for i in range(n_samples):
+        row = {'sample_id': i}
+        ad_all_correct = True
+        sc_all_correct = True
+        for j, aspect in enumerate(aspect_names):
+            ap, al = int(ad_preds[i, j]), int(ad_labels[i, j])
+            row[f'{aspect}_ad_pred'] = ap
+            row[f'{aspect}_ad_true'] = al
+            row[f'{aspect}_ad_correct'] = int(ap == al)
+            if ap != al:
+                ad_all_correct = False
+
+            sp, sl = int(sc_preds[i, j]), int(sc_labels[i, j])
+            row[f'{aspect}_sc_pred'] = sp
+            row[f'{aspect}_sc_true'] = sl
+            if al == 1:
+                row[f'{aspect}_sc_correct'] = int(sp == sl)
+                if sp != sl:
+                    sc_all_correct = False
+            else:
+                row[f'{aspect}_sc_correct'] = ''
+
+        row['ad_exact_match'] = int(ad_all_correct)
+        row['sc_exact_match'] = int(sc_all_correct)
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    save_path = os.path.join(output_dir, 'test_predictions_detailed.csv')
+    df.to_csv(save_path, index=False, encoding='utf-8-sig')
+    print(f"   Saved predictions: {save_path} ({n_samples} samples)")
+
+
 def generate_final_report(metrics: dict, output_dir: str, config: dict):
     """Generate final report"""
     print("\n[phoBERT-MTL] Generating final report...")
@@ -706,6 +752,9 @@ def main(args: argparse.Namespace):
     
     # Save confusion matrices
     save_confusion_matrices(test_metrics, train_dataset.aspects, output_dir)
+    
+    # Save predictions for McNemar test
+    save_mtl_predictions(test_metrics, train_dataset.aspects, output_dir)
     
     # Generate final report
     generate_final_report(test_metrics, output_dir, config)

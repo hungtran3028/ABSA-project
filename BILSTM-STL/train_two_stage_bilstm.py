@@ -221,6 +221,28 @@ def train_aspect_detection(config, embedding_model, tokenizer, device):
     plt.savefig(os.path.join(output_dir, 'confusion_matrix_ad.png'), dpi=300)
     plt.close()
     
+    # Save predictions for McNemar test
+    ad_preds = test_metrics['predictions']
+    ad_labels = test_metrics['labels']
+    n_samples = ad_preds.shape[0]
+    rows = []
+    for i in range(n_samples):
+        row = {'sample_id': i}
+        all_correct = True
+        for j, aspect in enumerate(aspects):
+            p, l = int(ad_preds[i, j]), int(ad_labels[i, j])
+            row[f'{aspect}_pred'] = p
+            row[f'{aspect}_true'] = l
+            row[f'{aspect}_correct'] = int(p == l)
+            if p != l:
+                all_correct = False
+        row['ad_exact_match'] = int(all_correct)
+        rows.append(row)
+    pred_df = pd.DataFrame(rows)
+    pred_path = os.path.join(output_dir, 'test_predictions.csv')
+    pred_df.to_csv(pred_path, index=False, encoding='utf-8-sig')
+    print(f"   Saved AD predictions: {pred_path} ({n_samples} samples)")
+    
     return output_dir
 
 
@@ -424,6 +446,32 @@ def train_sentiment_classification(config, embedding_model, tokenizer, device):
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'confusion_matrix_sc.png'), dpi=300)
     plt.close()
+    
+    # Save predictions for McNemar test
+    sc_p = test_metrics['predictions']
+    sc_l = test_metrics['labels']
+    if isinstance(sc_p, torch.Tensor):
+        sc_p = sc_p.numpy()
+    if isinstance(sc_l, torch.Tensor):
+        sc_l = sc_l.numpy()
+    n_samples = sc_p.shape[0]
+    rows = []
+    for i in range(n_samples):
+        row = {'sample_id': i}
+        all_correct = True
+        for j, aspect in enumerate(aspects):
+            p, l = int(sc_p[i, j]), int(sc_l[i, j])
+            row[f'{aspect}_pred'] = p
+            row[f'{aspect}_true'] = l
+            row[f'{aspect}_correct'] = int(p == l)
+            if p != l:
+                all_correct = False
+        row['sc_exact_match'] = int(all_correct)
+        rows.append(row)
+    pred_df = pd.DataFrame(rows)
+    pred_path = os.path.join(output_dir, 'test_predictions_detailed.csv')
+    pred_df.to_csv(pred_path, index=False, encoding='utf-8-sig')
+    print(f"   Saved SC predictions: {pred_path} ({n_samples} samples)")
     
     return output_dir
 
