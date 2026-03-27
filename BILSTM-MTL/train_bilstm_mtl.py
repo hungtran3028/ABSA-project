@@ -321,7 +321,7 @@ def main(args: argparse.Namespace):
             wandb.login(key=wandb_key)
         else:
             wandb.login()
-        wandb.init(project="ABSA-Vietnamese", name="BiLSTM-MTL", config=config, tags=["mtl", "bilstm"])
+        wandb.init(project="ABSA-Vietnamese", name=f"BiLSTM-MTL_{datetime.now().strftime('%Y%m%d_%H%M%S')}", config=config, tags=["mtl", "bilstm"])
     except Exception as e:
         logging.warning(f"Wandb init failed: {e}")
         os.environ["WANDB_MODE"] = "disabled"

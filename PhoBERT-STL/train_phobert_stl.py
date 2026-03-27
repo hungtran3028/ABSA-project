@@ -1125,7 +1125,7 @@ def main(args: argparse.Namespace):
             wandb.login()
         wandb.init(
             project="ABSA-Vietnamese",
-            name="PhoBERT-STL",
+            name=f"PhoBERT-STL_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             config=config,
             tags=["stl", "phobert"],
         )

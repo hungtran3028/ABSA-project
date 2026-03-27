@@ -477,7 +477,7 @@ def main(args: argparse.Namespace):
             wandb.login()
         wandb.init(
             project="ABSA-Vietnamese",
-            name="ViSoBERT-MTL",
+            name=f"ViSoBERT-MTL_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             config=config,
             tags=["mtl", "visobert"],
         )
